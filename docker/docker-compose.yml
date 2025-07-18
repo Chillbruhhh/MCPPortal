@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  mcp-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: mcp-gateway
+    ports:
+      - "8020:8020"
+    environment:
+      # Gateway Configuration
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=8020
+      - LOG_LEVEL=INFO
+      
+      # MCP Server Configuration
+      # The gateway will automatically discover MCP servers from IDE configurations
+      # You can also configure additional servers here in JSON format
+      - MCP_SERVERS=[{"name": "example-server", "url": "http://host.docker.internal:3000"}]
+      
+      # Security Configuration
+      - API_KEY_HEADER=X-API-Key
+      - ALLOWED_ORIGINS=["http://localhost:3000", "http://localhost:8080", "http://localhost:8020", "http://host.docker.internal:8020"]
+      
+      # Monitoring and Health Check Settings
+      - HEALTH_CHECK_INTERVAL=30
+      - CONNECTION_TIMEOUT=30
+      - MAX_RETRIES=3
+      
+      # Optional API Key for authentication
+      # - API_KEY=your-secure-api-key-here
+      
+      # Optional Database Configuration for persistence
+      # - DATABASE_URL=sqlite:///app/data/gateway.db
+    volumes:
+      # Mount logs directory for persistent logging
+      - gateway-logs:/app/logs
+      # Mount .env file if it exists (optional)
+      - ../.env:/app/.env:ro
+      # Mount a data directory for any persistent storage
+      - gateway-data:/app/data
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Example: Context7 MCP Server
+  # context7-server:
+  #   image: node:18-alpine
+  #   container_name: context7-server
+  #   working_dir: /app
+  #   command: ["npx", "-y", "@upstash/context7-mcp@latest"]
+  #   environment:
+  #     - PORT=3001
+  #     - UPSTASH_REDIS_REST_URL=your-redis-url
+  #     - UPSTASH_REDIS_REST_TOKEN=your-redis-token
+  #   ports:
+  #     - "3001:3001"
+  #   networks:
+  #     - mcp-network
+  #   restart: unless-stopped
+
+  # Example: Puppeteer MCP Server
+  # puppeteer-server:
+  #   image: node:18-alpine
+  #   container_name: puppeteer-server
+  #   working_dir: /app
+  #   command: ["npx", "-y", "@modelcontextprotocol/server-puppeteer"]
+  #   environment:
+  #     - PORT=3002
+  #     - PUPPETEER_LAUNCH_OPTIONS={"headless": true}
+  #     - ALLOW_DANGEROUS=true
+  #   ports:
+  #     - "3002:3002"
+  #   networks:
+  #     - mcp-network
+  #   restart: unless-stopped
+
+networks:
+  mcp-network:
+    driver: bridge
+    name: mcp-network
+
+volumes:
+  gateway-logs:
+    driver: local
+  gateway-data:
+    driver: local

@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  mcp-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: mcp-gateway-prod
+    ports:
+      - "8020:8020"
+    environment:
+      # Gateway Configuration
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=8020
+      - LOG_LEVEL=INFO
+      
+      # MCP Server Configuration
+      # The gateway will automatically discover MCP servers from IDE configurations
+      # Override with your production MCP servers
+      - MCP_SERVERS=${MCP_SERVERS:-[]}
+      
+      # Security Configuration
+      - API_KEY_HEADER=X-API-Key
+      - API_KEY=${API_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-["https://your-domain.com"]}
+      
+      # Monitoring and Health Check Settings
+      - HEALTH_CHECK_INTERVAL=30
+      - CONNECTION_TIMEOUT=30
+      - MAX_RETRIES=3
+      
+      # Optional Database Configuration for persistence
+      - DATABASE_URL=${DATABASE_URL:-}
+    volumes:
+      # Mount logs directory for persistent logging
+      - gateway-logs:/app/logs
+      # Mount a data directory for any persistent storage
+      - gateway-data:/app/data
+      # Mount production .env file
+      - ${PWD}/.env.production:/app/.env:ro
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Reverse proxy for production (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: mcp-gateway-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - mcp-gateway
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  mcp-network:
+    driver: bridge
+    name: mcp-network-prod
+
+volumes:
+  gateway-logs:
+    driver: local
+  gateway-data:
+    driver: local 

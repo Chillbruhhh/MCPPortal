@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Gateway - Management Interface</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🌐 MCP Gateway</h1>
+            <p class="subtitle">Centralized Model Context Protocol Management</p>
+            <div class="connection-status">
+                <span id="connection-indicator" class="status-indicator disconnected">●</span>
+                <span id="connection-text">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Configuration Editor Modal -->
+        <div id="config-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🛠️ MCP Configuration Editor</h2>
+                    <button class="close-btn" id="config-modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="config-description">
+                        Edit the raw JSON configuration for MCP servers. You can add, remove, or modify server configurations.
+                        <strong>Note:</strong> Changes are applied to runtime configuration only. Restart the gateway to persist changes.
+                    </p>
+                    <div class="config-editor-container">
+                        <textarea id="config-editor" class="config-textarea" placeholder="Loading configuration..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancel-config-btn" class="btn btn-secondary">Cancel</button>
+                    <button id="save-config-btn" class="btn btn-primary">💾 Save Configuration</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gateway Status -->
+        <section class="section">
+            <h2>Gateway Status</h2>
+            <div class="status-grid">
+                <div class="status-card">
+                    <h3>Total Servers</h3>
+                    <span id="total-servers" class="metric">0</span>
+                </div>
+                <div class="status-card">
+                    <h3>Active Servers</h3>
+                    <span id="active-servers" class="metric">0</span>
+                </div>
+                <div class="status-card">
+                    <h3>Total Tools</h3>
+                    <span id="total-tools" class="metric">0</span>
+                </div>
+                <div class="status-card">
+                    <h3>Total Resources</h3>
+                    <span id="total-resources" class="metric">0</span>
+                </div>
+                <div class="status-card">
+                    <h3>Uptime</h3>
+                    <span id="uptime" class="metric">0s</span>
+                </div>
+                <div class="status-card">
+                    <h3>Last Updated</h3>
+                    <span id="last-updated" class="metric">-</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Servers -->
+        <section class="section">
+            <div class="section-header">
+                <h2>MCP Servers</h2>
+                <div class="server-controls">
+                    <button id="refresh-servers" class="btn btn-secondary">🔄 Refresh</button>
+                    <button id="config-editor-btn" class="btn btn-secondary">⚙️ MCP Configuration</button>
+                    <button id="discover-servers" class="btn btn-primary">🔍 Discover</button>
+                </div>
+            </div>
+            <div id="servers-container" class="servers-grid">
+                <!-- Servers will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Tools -->
+        <section class="section">
+            <h2>Aggregated Tools</h2>
+            <div class="tools-header">
+                <div class="search-box">
+                    <input type="text" id="tools-search" placeholder="Search tools..." />
+                    <select id="tools-server-filter">
+                        <option value="">All Servers</option>
+                    </select>
+                </div>
+                <div class="tools-stats">
+                    <span id="tools-count">0 tools</span>
+                </div>
+            </div>
+            <div id="tools-container" class="tools-list">
+                <!-- Tools will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Resources -->
+        <section class="section">
+            <h2>Aggregated Resources</h2>
+            <div class="resources-header">
+                <div class="search-box">
+                    <input type="text" id="resources-search" placeholder="Search resources..." />
+                    <select id="resources-server-filter">
+                        <option value="">All Servers</option>
+                    </select>
+                </div>
+                <div class="resources-stats">
+                    <span id="resources-count">0 resources</span>
+                </div>
+            </div>
+            <div id="resources-container" class="resources-list">
+                <!-- Resources will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Event Log -->
+        <section class="section">
+            <h2>Event Log</h2>
+            <div class="event-log-header">
+                <button id="clear-events" class="btn btn-secondary">Clear Log</button>
+                <button id="test-sse" class="btn btn-primary">Test SSE</button>
+                <label>
+                    <input type="checkbox" id="auto-scroll" checked> Auto-scroll
+                </label>
+            </div>
+            <div id="event-log" class="event-log">
+                <!-- Events will be populated dynamically -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/script.js"></script>
+</body>
+</html>
