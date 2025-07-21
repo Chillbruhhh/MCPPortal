@@ -18,8 +18,6 @@ claude_code_mcp/
 venv/ 
 venv_linux/
 
-docker-mcps.json
-
 
 # Python
 __pycache__/
@@ -310,3 +308,5 @@ Thumbs.db
 startup_debug.log
 test_mcp_gateway.py
 standalone_mcp_server.py
+docker-mcps.json
+
