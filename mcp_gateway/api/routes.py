@@ -9,11 +9,14 @@ import uuid
 from typing import Any, Dict, List
 import asyncio
 import json
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sse_starlette.sse import EventSourceResponse
+
+logger = logging.getLogger(__name__)
 
 from ..core.gateway import MCPGateway
 # Removed old MCP transport - now using FastMCP SDK
@@ -36,6 +39,255 @@ from ..models.responses import (
 from .dependencies import get_gateway, get_rate_limited_gateway
 
 router = APIRouter(tags=["MCP Gateway API"])
+
+
+async def handle_mcp_message(message: dict, gateway_instance=None):
+    """Handle MCP message and return response"""
+    # For now, handle basic initialize and other common requests
+    method = message.get("method", "")
+    
+    # Skip notifications - they're handled in the endpoint directly
+    if method.startswith("notifications/"):
+        logger.info(f"Skipping notification in handle_mcp_message: {method}")
+        return {"status": "notification_handled_elsewhere"}
+    
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {},
+                    "resources": {},
+                    "prompts": {}
+                },
+                "serverInfo": {
+                    "name": "MCP Gateway",
+                    "version": "1.0.0"
+                }
+            }
+        }
+
+    elif method == "tools/list":
+        # Get the actual aggregated tools from the gateway
+        try:
+            if gateway_instance and hasattr(gateway_instance, 'get_aggregated_tools'):
+                tools = gateway_instance.get_aggregated_tools()
+                # Convert to standard MCP tool format
+                tools_data = []
+                for tool in tools:
+                    # Use the actual input schema stored in the aggregated tool (from original MCP server)
+                    input_schema = tool.parameters if tool.parameters else {
+                        "type": "object",
+                        "properties": {}
+                    }
+                    
+                    mcp_tool = {
+                        "name": tool.prefixed_name,  # Use prefixed name as the tool name
+                        "description": tool.description,
+                        "inputSchema": input_schema  # Use original schema from MCP server
+                    }
+                    tools_data.append(mcp_tool)
+                    logger.debug(f"Tool {tool.prefixed_name} from {tool.server_name} has schema: {input_schema}")
+                    
+                    # Log if schema is empty
+                    if not input_schema or input_schema == {"type": "object", "properties": {}}:
+                        logger.warning(f"Tool {tool.prefixed_name} from {tool.server_name} has empty schema! Original parameters: {tool.parameters}")
+                    
+                logger.info(f"Returning {len(tools_data)} aggregated tools in MCP format")
+            else:
+                tools_data = []
+                logger.warning("No gateway instance or get_aggregated_tools method available")
+                
+            return {
+                "jsonrpc": "2.0", 
+                "id": message.get("id"),
+                "result": {
+                    "tools": tools_data
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting aggregated tools: {e}")
+            return {
+                "jsonrpc": "2.0", 
+                "id": message.get("id"),
+                "result": {
+                    "tools": []
+                }
+            }
+    elif method == "tools/call":
+        # Handle tool execution
+        try:
+            params = message.get("params", {})
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            if not tool_name:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32602,
+                        "message": "Missing required parameter: name"
+                    }
+                }
+            
+            if not gateway_instance:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32603,
+                        "message": "Gateway instance not available"
+                    }
+                }
+            
+            # Execute tool via gateway
+            tool_request = ToolExecutionRequest(
+                tool_name=tool_name,
+                parameters=arguments
+            )
+            
+            result = await gateway_instance.execute_tool(tool_request)
+            
+            if result.success:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(result.result, indent=2) if result.result else "Tool executed successfully"
+                            }
+                        ]
+                    }
+                }
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32603,
+                        "message": f"Tool execution failed: {result.error}"
+                    }
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in tools/call: {e}")
+            return {
+                "jsonrpc": "2.0",
+                "id": message.get("id"),
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            }
+    elif method == "resources/list":
+        # Get the actual aggregated resources from the gateway
+        try:
+            if gateway_instance and hasattr(gateway_instance, 'get_aggregated_resources'):
+                resources = gateway_instance.get_aggregated_resources()
+                resources_data = [resource.model_dump() for resource in resources]
+                logger.info(f"Returning {len(resources_data)} aggregated resources")
+            else:
+                resources_data = []
+                logger.warning("No gateway instance or get_aggregated_resources method available")
+                
+            return {
+                "jsonrpc": "2.0", 
+                "id": message.get("id"),
+                "result": {
+                    "resources": resources_data
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting aggregated resources: {e}")
+            return {
+                "jsonrpc": "2.0", 
+                "id": message.get("id"),
+                "result": {
+                    "resources": []
+                }
+            }
+    elif method == "resources/read":
+        # Handle resource access
+        try:
+            params = message.get("params", {})
+            resource_uri = params.get("uri")
+            
+            if not resource_uri:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32602,
+                        "message": "Missing required parameter: uri"
+                    }
+                }
+            
+            if not gateway_instance:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32603,
+                        "message": "Gateway instance not available"
+                    }
+                }
+            
+            # Access resource via gateway
+            resource_request = ResourceRequest(
+                resource_uri=resource_uri,
+                parameters=params
+            )
+            
+            result = await gateway_instance.access_resource(resource_request)
+            
+            if result.success:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "result": {
+                        "contents": [
+                            {
+                                "uri": resource_uri,
+                                "mimeType": result.mime_type or "text/plain",
+                                "text": result.content or ""
+                            }
+                        ]
+                    }
+                }
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32603,
+                        "message": f"Resource access failed: {result.error}"
+                    }
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in resources/read: {e}")
+            return {
+                "jsonrpc": "2.0",
+                "id": message.get("id"),
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            }
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "error": {
+                "code": -32601,
+                "message": f"Method not found: {method}"
+            }
+        }
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -367,6 +619,272 @@ async def access_resource(
 
 # MCP Protocol Endpoints
 
+# Session management
+_mcp_sessions = {}  # session_id -> session_data
+_sse_connections = {}  # connection_id -> (session_id, queue)
+
+@router.get("/mcp")
+@router.post("/mcp")
+async def mcp_endpoint(request: Request, gateway: MCPGateway = Depends(get_gateway)):
+    """
+    Main MCP endpoint following MCP Streamable HTTP Transport specification.
+    
+    Implements the complete MCP handshake sequence:
+    1. Client opens SSE stream (GET) → Server sends endpoint event
+    2. Client sends initialize (POST) → Server responds with session ID
+    3. Client sends initialized notification (POST) → Server responds 202 Accepted
+    4. Normal operation begins
+    """
+    import json
+    import asyncio
+    from datetime import datetime, timezone
+    
+    if request.method == "GET":
+        # Handle SSE stream establishment
+        logger.info("MCP SSE stream requested")
+        
+        # Check Accept header
+        accept_header = request.headers.get("accept", "")
+        if "text/event-stream" not in accept_header and "*/*" not in accept_header:
+            return JSONResponse(
+                {"error": "SSE streams require Accept: text/event-stream header"},
+                status_code=400
+            )
+        
+        # Get session ID if provided
+        session_id = request.headers.get("Mcp-Session-Id")
+        connection_id = str(uuid.uuid4())
+        
+        logger.info(f"Opening MCP SSE stream (session: {session_id}, connection: {connection_id})")
+        if not session_id:
+            logger.info(f"SSE stream {connection_id} opened without session - will link during initialize")
+        
+        async def sse_generator():
+            """Generate proper MCP SSE events according to specification."""
+            try:
+                # Create message queue for this connection
+                message_queue = asyncio.Queue(maxsize=100)
+                _sse_connections[connection_id] = (session_id, message_queue)
+                
+                # CRITICAL: Send endpoint event first (MCP SSE Transport requirement)
+                # This tells the client where to send POST messages
+                endpoint_url = "/api/v1/mcp"  # Full endpoint path
+                yield f"event: endpoint\ndata: {endpoint_url}\n\n"
+                
+                # Force a small delay to ensure event is sent
+                await asyncio.sleep(0.1)
+                
+                # Send initial ready message as proper SSE message event
+                server_ready = {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/ready",
+                    "params": {
+                        "serverInfo": {
+                            "name": "mcp-portal",
+                            "version": "1.0.0",
+                            "protocolVersion": "2024-11-05"
+                        }
+                    }
+                }
+                yield f"event: message\ndata: {json.dumps(server_ready)}\n\n"
+                
+                # Log that SSE stream is ready for Cline
+                logger.info(f"MCP SSE stream ready for client (connection: {connection_id})")
+                
+                # Main event loop
+                while True:
+                    try:
+                        # Check if client disconnected
+                        if await request.is_disconnected():
+                            logger.info(f"MCP SSE client disconnected: {connection_id}")
+                            break
+                        
+                        # Wait for outgoing message with timeout
+                        try:
+                            message = await asyncio.wait_for(message_queue.get(), timeout=60.0)
+                            # Send as proper SSE message event
+                            yield f"event: message\ndata: {json.dumps(message)}\n\n"
+                            logger.debug(f"SSE sent message to {connection_id}: {message.get('method', 'unknown')}")
+                        except asyncio.TimeoutError:
+                            # Send keep-alive ping as heartbeat event (less frequent)
+                            ping = {"timestamp": datetime.now(timezone.utc).isoformat()}
+                            yield f"event: ping\ndata: {json.dumps(ping)}\n\n"
+                            logger.debug(f"SSE keep-alive ping sent to {connection_id}")
+                            
+                    except Exception as e:
+                        logger.error(f"MCP SSE generator error: {e}")
+                        break
+                        
+            finally:
+                # Clean up connection
+                if connection_id in _sse_connections:
+                    del _sse_connections[connection_id]
+                logger.info(f"MCP SSE connection closed: {connection_id}")
+        
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Methods": "*"
+            }
+        )
+    
+    elif request.method == "POST":
+        # Handle JSON-RPC messages
+        logger.info("MCP JSON-RPC request received")
+        
+        # Check Accept header
+        accept_header = request.headers.get("accept", "")
+        if ("application/json" not in accept_header and 
+            "text/event-stream" not in accept_header and 
+            "*/*" not in accept_header):
+            return JSONResponse(
+                {"error": "MCP requires Accept: application/json, text/event-stream"},
+                status_code=400
+            )
+        
+        # Get session ID from header
+        session_id = request.headers.get("Mcp-Session-Id")
+        
+        try:
+            # Parse JSON-RPC message
+            message = await request.json()
+            method = message.get('method', 'unknown')
+            logger.info(f"MCP message: {method} (session: {session_id})")
+            
+            # Handle notifications specially - they MUST return 202 Accepted with no body
+            if method.startswith("notifications/"):
+                logger.info(f"Processing MCP notification: {method}")
+                
+                if method == "notifications/initialized":
+                    # Validate session exists
+                    if session_id and session_id in _mcp_sessions:
+                        _mcp_sessions[session_id]["initialized"] = True
+                        logger.info(f"MCP session {session_id} marked as initialized")
+                    
+                    # Return 202 Accepted with no body (per MCP spec)
+                    return Response(status_code=202)
+                
+                else:
+                    # Other notifications - also return 202 Accepted
+                    logger.info(f"Processed MCP notification: {method}")
+                    return Response(status_code=202)
+            
+            # Handle requests (not notifications)
+            else:
+                # Process the request
+                response = await handle_mcp_message(message, gateway)
+                
+                # For initialize requests, add session management
+                if method == "initialize":
+                    if not session_id:
+                        # Create new session
+                        session_id = str(uuid.uuid4())
+                        _mcp_sessions[session_id] = {
+                            "created_at": datetime.now(timezone.utc),
+                            "client_info": message.get("params", {}).get("clientInfo", {}),
+                            "protocol_version": message.get("params", {}).get("protocolVersion", "2024-11-05"),
+                            "initialized": False
+                        }
+                        logger.info(f"Created new MCP session: {session_id}")
+                        
+                        # Link any unlinked SSE connections to this session (for Cline flow)
+                        # Cline opens SSE stream first, then sends initialize
+                        linked_sse_connection = None
+                        for conn_id, (conn_session_id, message_queue) in list(_sse_connections.items()):
+                            if conn_session_id is None:  # Unlinked connection
+                                _sse_connections[conn_id] = (session_id, message_queue)
+                                linked_sse_connection = (conn_id, message_queue)
+                                logger.info(f"Linked SSE connection {conn_id} to new session {session_id}")
+                                break  # Link only the most recent unlinked connection
+                        
+                        # If we linked an SSE connection, send initialize response via SSE (Cline expects this)
+                        if linked_sse_connection:
+                            conn_id, message_queue = linked_sse_connection
+                            try:
+                                await message_queue.put(response)
+                                logger.info(f"Sent initialize response via SSE to connection {conn_id}")
+                                # Return 202 to indicate response sent via SSE
+                                response_with_session = Response(status_code=202)
+                                response_with_session.headers["Mcp-Session-Id"] = session_id
+                                return response_with_session
+                            except Exception as e:
+                                logger.error(f"Failed to send initialize via SSE: {e}")
+                                # Fall back to direct JSON response
+                    
+                    # Fallback: Add session ID to response headers (for clients without SSE)
+                    json_response = JSONResponse(response)
+                    json_response.headers["Mcp-Session-Id"] = session_id
+                    return json_response
+                
+                # For other requests, check if there's an active SSE connection
+                # If so, send response via SSE stream (MCP spec compliance)
+                active_sse_connection = None
+                
+                # First, try to find SSE connection by session ID (if provided)
+                if session_id:
+                    for conn_id, (conn_session_id, message_queue) in _sse_connections.items():
+                        if conn_session_id == session_id:
+                            active_sse_connection = (conn_id, message_queue)
+                            break
+                
+                # If no session ID or no matching connection, check for any active SSE connection
+                # This handles cases where clients (like Cline) don't send session IDs but expect SSE responses
+                if not active_sse_connection and _sse_connections:
+                    # Use the most recent SSE connection (last in dict)
+                    conn_id = list(_sse_connections.keys())[-1]
+                    conn_session_id, message_queue = _sse_connections[conn_id]
+                    if conn_session_id:  # Only use connections with linked sessions
+                        active_sse_connection = (conn_id, message_queue)
+                        logger.info(f"Using active SSE connection {conn_id} for sessionless request: {method}")
+                
+                if active_sse_connection:
+                    # Send response via SSE stream (proper MCP behavior)
+                    conn_id, message_queue = active_sse_connection
+                    try:
+                        await message_queue.put(response)
+                        logger.info(f"Routed MCP {method} response via SSE to connection {conn_id}")
+                        # Return 202 Accepted to indicate response will come via SSE
+                        return Response(status_code=202)
+                    except Exception as e:
+                        logger.error(f"Failed to route {method} response via SSE: {e}")
+                        return JSONResponse(response)  # Fallback to direct response
+                else:
+                    # No active SSE connection, validate session if provided
+                    if session_id and session_id not in _mcp_sessions:
+                        return JSONResponse(
+                            {"error": "Invalid session ID"},
+                            status_code=404
+                        )
+                    
+                    # Return JSON response directly (for clients without SSE)
+                    logger.info(f"No SSE connection available - sending {method} as direct JSON response")
+                    return JSONResponse(response)
+            
+        except json.JSONDecodeError:
+            return JSONResponse(
+                {"error": "Invalid JSON-RPC message"},
+                status_code=400
+            )
+        except Exception as e:
+            logger.error(f"MCP message handling error: {e}")
+            return JSONResponse(
+                {"error": f"Internal error: {str(e)}"},
+                status_code=500
+            )
+    
+    else:
+        # Method not allowed
+        return JSONResponse(
+            {"error": "Method not allowed. Use GET for SSE streams or POST for JSON-RPC messages."},
+            status_code=405
+        )
+
+
 @router.post("/mcp/register")
 async def mcp_client_registration(
     request: Request,
@@ -393,8 +911,8 @@ async def mcp_client_registration(
             "client_secret": "not_required_for_sse",
             "registration_access_token": "not_required_for_sse",
             "endpoints": {
-                "sse": f"/api/v1/mcp/sse",
-                "request": f"/api/v1/mcp/request"
+                "sse": f"/api/v1/mcp",  # Updated to use main MCP endpoint
+                "request": f"/api/v1/mcp"  # Updated to use main MCP endpoint
             },
             "server_info": {
                 "name": "mcp-gateway",

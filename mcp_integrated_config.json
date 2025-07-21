@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mcp-portal": {
+      "transport": "sse",
+      "url": "http://localhost:8020/api/v1/mcp",
+      "env": {
+        "MCP_PORTAL_INTEGRATED": "true"
+      }
+    }
+  }
+} 

@@ -14,6 +14,9 @@ MCP_GATEWAY_FIXES.md
 examples/
 htmlcov/
 use-cases/
+claude_code_mcp/
+venv/ 
+venv_linux/
 
 # Python
 __pycache__/

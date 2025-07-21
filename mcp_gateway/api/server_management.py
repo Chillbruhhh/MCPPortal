@@ -31,6 +31,11 @@ async def handle_mcp_message(message: dict, gateway_instance=None):
     # For now, handle basic initialize and other common requests
     method = message.get("method", "")
     
+    # Skip notifications - they're handled in the endpoint directly
+    if method.startswith("notifications/"):
+        logger.info(f"Skipping notification in handle_mcp_message: {method}")
+        return {"status": "notification_handled_elsewhere"}
+    
     if method == "initialize":
         return {
             "jsonrpc": "2.0",
@@ -48,12 +53,7 @@ async def handle_mcp_message(message: dict, gateway_instance=None):
                 }
             }
         }
-    elif method == "notifications/initialized":
-        return {
-            "jsonrpc": "2.0",
-            "id": message.get("id"),
-            "result": {}
-        }
+
     elif method == "tools/list":
         # Get the actual aggregated tools from the gateway
         try:
@@ -378,40 +378,64 @@ def create_app(gateway: MCPGateway, settings: Settings) -> FastAPI:
         # Get the JSON body
         try:
             body = await request.json()
+            method = body.get('method', 'unknown')
             logger.info(f"Received MCP message at /sse: {body}")
         except Exception as e:
             logger.error(f"Failed to parse JSON body at /sse: {e}")
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Invalid JSON")
         
+        # Check if this is a non-initialization request without session
+        # (Cursor pattern - goes straight to tools/list)
+        session_id = request.headers.get("Mcp-Session-Id")
+        auto_created_session = False
+        
+        if not method.startswith("notifications/") and method != "initialize" and not session_id:
+            logger.info(f"SSE client ({method}) without session - creating auto-session")
+            # Create an auto-session for clients like Cursor that skip initialization
+            import uuid
+            from datetime import datetime, timezone
+            session_id = str(uuid.uuid4())
+            auto_created_session = True
+            
+            # Import session storage from routes module
+            from .routes import _mcp_sessions
+            _mcp_sessions[session_id] = {
+                "created_at": datetime.now(timezone.utc),
+                "client_info": {"name": "auto-session", "source": "sse-direct"},
+                "protocol_version": "2024-11-05",
+                "initialized": True,  # Mark as auto-initialized
+                "auto_created": True
+            }
+            logger.info(f"Auto-created MCP session for SSE client: {session_id}")
+        
         # Handle MCP message (same as /messages endpoint)
         try:
             response = await handle_mcp_message(body, gateway)
-            logger.info(f"MCP response from /sse: {response}")
+            
+            # Log client pattern for analytics
+            user_agent = request.headers.get("User-Agent", "unknown")
+            if auto_created_session:
+                logger.info(f"SSE auto-session response to {user_agent}: {method}")
+            else:
+                logger.info(f"SSE standard response to {user_agent}: {method}")
+            
+            logger.debug(f"MCP response from /sse: {response}")
+            
+            # For auto-created sessions, just return the response without session headers
+            # (Cursor doesn't expect session management)
             return response
         except Exception as e:
             logger.error(f"Error handling MCP message at /sse: {e}")
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail="Internal server error")
 
-    # Add root-level /messages endpoint (required for FastMCP compatibility)
+    # Add root-level /messages endpoint (required for FastMCP compatibility) - NO AUTH REQUIRED
     @app.post("/messages")
     async def root_messages_endpoint(request: Request):
-        """Root-level MCP messages endpoint with optional Bearer token validation"""
+        """Root-level MCP messages endpoint - NO AUTHENTICATION REQUIRED"""
         
-        # Check for Authorization header
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header and not auth_header.startswith("Bearer "):
-            from fastapi import HTTPException
-            raise HTTPException(status_code=401, detail="Invalid authorization header format")
-        
-        if auth_header:
-            token = auth_header.replace("Bearer ", "")
-            if token != "anonymous-token":
-                from fastapi import HTTPException
-                raise HTTPException(status_code=401, detail="Invalid access token")
-        
-        logger.info("Root-level MCP messages endpoint requested")
+        logger.info("Root-level MCP messages endpoint requested (no auth)")
         
         # Get the JSON body
         try:
@@ -433,95 +457,72 @@ def create_app(gateway: MCPGateway, settings: Settings) -> FastAPI:
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail="Internal server error")
 
-    # Add root-level endpoints for MCP compatibility
+    # Disable OAuth entirely - no protected resource needed
     @app.get("/.well-known/oauth-protected-resource")
     async def oauth_protected_resource():
-        """OAuth Protected Resource Metadata - indicates no auth required"""
-        return {
-            "resource": "http://host.docker.internal:8020",
-            "authorization_servers": []  # Empty array indicates no authorization required
-        }
+        """Return 404 to indicate no OAuth protection"""
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="OAuth not required")
 
+    # Add Cline-compatible endpoint aliases for better compatibility
+    @app.get("/events")
+    async def cline_events_endpoint(request: Request):
+        """Cline-compatible SSE events endpoint (alias for /sse)"""
+        logger.info("Cline-compatible /events SSE endpoint requested")
+        return await root_sse_endpoint(request)
+
+    @app.post("/message")
+    async def cline_message_endpoint(request: Request):
+        """Cline-compatible message endpoint (alias for /messages)"""
+        logger.info("Cline-compatible /message endpoint requested")
+        return await root_messages_endpoint(request)
+
+    # Debug endpoint for session information
+    @app.get("/debug/sessions")
+    async def debug_sessions():
+        """Debug endpoint to show active MCP sessions"""
+        try:
+            from .routes import _mcp_sessions
+            return {
+                "total_sessions": len(_mcp_sessions),
+                "sessions": {
+                    session_id: {
+                        "created_at": str(session_data.get("created_at")),
+                        "client_info": session_data.get("client_info"),
+                        "protocol_version": session_data.get("protocol_version"),
+                        "initialized": session_data.get("initialized"),
+                        "auto_created": session_data.get("auto_created", False)
+                    }
+                    for session_id, session_data in _mcp_sessions.items()
+                }
+            }
+        except Exception as e:
+            return {"error": str(e), "sessions": {}}
+
+    # Disable OAuth authorization server
     @app.get("/.well-known/oauth-authorization-server")
     async def oauth_authorization_server():
-        """OAuth Authorization Server Metadata - minimal response"""
-        return {
-            "issuer": "http://host.docker.internal:8020",
-            "authorization_endpoint": "http://host.docker.internal:8020/authorize",
-            "token_endpoint": "http://host.docker.internal:8020/token",
-            "registration_endpoint": "http://host.docker.internal:8020/register",
-            "response_types_supported": ["code"],
-            "grant_types_supported": ["authorization_code"],
-            "code_challenge_methods_supported": ["S256"]
-        }
+        """Return 404 to disable OAuth"""
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="OAuth not required")
 
     @app.post("/register")
-    async def oauth_register(request: Request):
-        """OAuth Dynamic Client Registration - return a properly formatted client"""
-        try:
-            # Parse the registration request
-            body = await request.json()
-            logger.info(f"OAuth client registration request: {body}")
-            
-            # Extract redirect URIs from the request or provide defaults
-            redirect_uris = body.get("redirect_uris", [
-                "http://host.docker.internal:8020/callback",
-                "http://localhost:8020/callback"
-            ])
-            
-            # Return proper OAuth client registration response
-            response = {
-                "client_id": "anonymous-client",
-                "client_secret": "not-required",
-                "redirect_uris": redirect_uris,
-                "grant_types": ["authorization_code"],
-                "response_types": ["code"],
-                "client_name": body.get("client_name", "Claude Code MCP Client"),
-                "client_uri": body.get("client_uri", ""),
-                "logo_uri": body.get("logo_uri", ""),
-                "scope": body.get("scope", ""),
-                "contacts": body.get("contacts", []),
-                "tos_uri": body.get("tos_uri", ""),
-                "policy_uri": body.get("policy_uri", ""),
-                "jwks_uri": body.get("jwks_uri", ""),
-                "software_id": body.get("software_id", ""),
-                "software_version": body.get("software_version", "")
-            }
-            
-            logger.info(f"OAuth client registration response: {response}")
-            return response
-            
-        except Exception as e:
-            logger.error(f"OAuth registration error: {e}")
-            # Return minimal response if JSON parsing fails
-            return {
-                "client_id": "anonymous-client",
-                "client_secret": "not-required", 
-                "redirect_uris": [
-                    "http://host.docker.internal:8020/callback",
-                    "http://localhost:8020/callback"
-                ],
-                "grant_types": ["authorization_code"],
-                "response_types": ["code"]
-            }
+    async def oauth_register():
+        """Disable OAuth registration"""
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="OAuth not required")
 
     @app.get("/authorize")
-    async def oauth_authorize(request: Request):
-        """OAuth Authorization - immediately redirect with dummy code"""
-        redirect_uri = request.query_params.get("redirect_uri", "http://host.docker.internal:8020")
-        state = request.query_params.get("state", "")
-        
-        # Immediately redirect with a dummy authorization code
-        return RedirectResponse(url=f"{redirect_uri}?code=anonymous-code&state={state}")
+    async def oauth_authorize():
+        """Disable OAuth authorization"""
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="OAuth not required")
 
     @app.post("/token")
-    async def oauth_token(request: Request):
-        """OAuth Token Exchange - return anonymous access token"""
-        return {
-            "access_token": "anonymous-token",
-            "token_type": "Bearer",
-            "expires_in": 3600
-        }
+    async def oauth_token():
+        """Disable OAuth token"""
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="OAuth not required")
 
     # Include API routes (FastMCP SSE endpoint is included in these routes)
     app.include_router(api_router, prefix="/api/v1")
@@ -532,6 +533,13 @@ def create_app(gateway: MCPGateway, settings: Settings) -> FastAPI:
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
     else:
         logger.warning(f"Static directory not found: {static_dir}")
+
+    # Assets directory for logos and other assets
+    assets_dir = Path(__file__).parent.parent.parent / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    else:
+        logger.warning(f"Assets directory not found: {assets_dir}")
 
     # Root endpoint
     @app.get("/", response_class=HTMLResponse)

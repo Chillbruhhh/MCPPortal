@@ -121,7 +121,7 @@ graph TB
     J --> T4
     J --> T5
     J --> T6
-    
+    end
 
     
     subgraph "🔄 Workflow"
@@ -172,6 +172,7 @@ graph TB
 | `/api/v1/resources` | GET | List all resources |
 | `/api/v1/config` | GET/POST | Manage MCP configurations |
 | `/api/v1/servers/refresh` | POST | Refresh server discovery |
+| `/api/v1/mcp`        | SSE/POST | Main MCP endpoint for tool execution/events |
 | `/sse` | GET | Server-Sent Events for real-time updates |
 
 ## 🔧 Configuration
@@ -186,36 +187,31 @@ MCP_PORTAL_LOG_LEVEL=INFO
 ### Manual Configuration
 ```json
 {
-  "mcp_servers": [
-    {
-      "name": "my-mcp-server",
-      "command": "npx",
-      "args": ["@my-org/mcp-server"],
-      "env": {
-        "API_KEY": "your-api-key"
-      }
+  "mcp_servers": {
+    "mcp-portal": {
+      "type": "sse",
+      "url": "http://localhost:8020/api/v1/mcp"
     }
-  ]
+  }
 }
+```
+### Claude Code
+```json
+claude mcp add-json mcp-portal '{"type":"sse","url":"http://localhost:8020/api/v1/mcp"}' --scope user
 ```
 
 ## 🐳 Docker Production Deployment
 
 ### Using Docker Compose
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  mcp-portal:
-    build: .
-    ports:
-      - "8020:8020"
-    volumes:
-      - ~/.cursor:/root/.cursor:ro
-      - ~/.vscode:/root/.vscode:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - MCP_PORTAL_LOG_LEVEL=INFO
+```docker
+# 1. Build the Docker image
+docker build -t mcp-portal .
+
+# 2. Run the container
+docker run -d -p 8020:8020 --name mcp-portal mcp-portal
+
+# 3. Open the web UI
+# Visit http://localhost:8020 in your browser
 ```
 
 ### Production Scripts

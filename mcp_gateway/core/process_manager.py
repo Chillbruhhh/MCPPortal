@@ -111,7 +111,7 @@ class MCPProcess:
         except Exception as e:
             logger.error(f"Error handling response from {self.config.name}: {e}")
     
-    async def send_request(self, request: MCPRequest, timeout: float = 30.0) -> MCPResponse:
+    async def send_request(self, request: MCPRequest, timeout: float = 60.0) -> MCPResponse:
         """Send a request to the MCP server and wait for response."""
         if not self.process or self.process.poll() is not None:
             raise RuntimeError(f"MCP server {self.config.name} is not running")
@@ -298,6 +298,9 @@ class MCPProcess:
             raise RuntimeError(f"MCP server {self.config.name} not initialized")
         
         try:
+            # Determine timeout based on tool type
+            timeout = self._get_tool_timeout(tool_name)
+            
             request = MCPRequest(
                 id=self.generate_request_id(),
                 method="tools/call",
@@ -307,7 +310,7 @@ class MCPProcess:
                 }
             )
             
-            response = await self.send_request(request)
+            response = await self.send_request(request, timeout=timeout)
             
             if response.error:
                 raise RuntimeError(f"Tool call failed: {response.error}")
@@ -317,6 +320,29 @@ class MCPProcess:
         except Exception as e:
             logger.error(f"Error calling tool {tool_name} on {self.config.name}: {e}")
             raise
+    
+    def _get_tool_timeout(self, tool_name: str) -> float:
+        """Get appropriate timeout for tool based on its type."""
+        # Network-based tools that need more time
+        network_tools = {
+            'brave_web_search', 'web_search', 'search', 'fetch', 'crawl', 
+            'scrape', 'api_call', 'http_request', 'download'
+        }
+        
+        # AI/LLM tools that need more time
+        ai_tools = {
+            'generate', 'completion', 'embedding', 'analyze', 'summarize'
+        }
+        
+        # Check if tool name contains network-related keywords
+        tool_lower = tool_name.lower()
+        
+        if any(keyword in tool_lower for keyword in network_tools):
+            return 120.0  # 2 minutes for network tools
+        elif any(keyword in tool_lower for keyword in ai_tools):
+            return 90.0   # 1.5 minutes for AI tools  
+        else:
+            return 60.0   # 1 minute default
     
     async def read_resource(self, uri: str) -> Dict[str, Any]:
         """Read a resource from the MCP server."""
@@ -473,13 +499,15 @@ class MCPProcessManager:
             
             logger.info(f"Starting MCP server {config.name} with command: {' '.join(command_parts)}")
             
-            # Start process
+            # Start process with explicit UTF-8 encoding (fixes Windows charmap issues)
             process = subprocess.Popen(
                 command_parts,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding='utf-8',  # Explicit UTF-8 encoding for cross-platform compatibility
+                errors='replace',  # Replace invalid characters instead of crashing
                 env=env,
                 bufsize=1,  # Line buffered
                 universal_newlines=True,  # Ensure text mode

@@ -128,7 +128,7 @@ class MCPAggregator:
                 )
 
                 if needs_prefix and prefix:
-                    prefixed_name = f"{prefix}.{tool.name}"
+                    prefixed_name = f"{prefix}_{tool.name}"  # Use underscore instead of dot for Claude Code compatibility
                 else:
                     prefixed_name = tool.name
 
@@ -180,7 +180,7 @@ class MCPAggregator:
                 )
 
                 if needs_prefix and prefix:
-                    prefixed_uri = f"{prefix}://{resource.uri}"
+                    prefixed_uri = f"{prefix}_{resource.uri}"  # Use underscore instead of :// for consistency
                 else:
                     prefixed_uri = resource.uri
 
@@ -218,16 +218,15 @@ class MCPAggregator:
         if tool_name in self._aggregated_tools:
             return self._aggregated_tools[tool_name]
 
-        # Try converting MCP client underscore notation back to dot notation
-        # MCP client converts prefix.tool_name to prefix_tool_name
-        # So we need to convert the first underscore back to a dot
-        if '_' in tool_name:
-            # Find the first underscore and convert it to a dot
-            first_underscore = tool_name.find('_')
-            if first_underscore != -1:
-                normalized_name = tool_name[:first_underscore] + '.' + tool_name[first_underscore + 1:]
+        # Try converting dot notation to underscore notation for backward compatibility
+        # Legacy clients might still send prefix.tool_name format
+        if '.' in tool_name:
+            # Find the first dot and convert it to an underscore
+            first_dot = tool_name.find('.')
+            if first_dot != -1:
+                normalized_name = tool_name[:first_dot] + '_' + tool_name[first_dot + 1:]
                 if normalized_name in self._aggregated_tools:
-                    logger.debug(f"Found tool '{tool_name}' via MCP client normalization to '{normalized_name}'")
+                    logger.debug(f"Found tool '{tool_name}' via dot-to-underscore normalization to '{normalized_name}'")
                     return self._aggregated_tools[normalized_name]
 
         # Then try to match original name
@@ -252,21 +251,23 @@ class MCPAggregator:
         if resource_uri in self._aggregated_resources:
             return self._aggregated_resources[resource_uri]
 
-        # Try normalized URI (convert underscores to dots for MCP client compatibility)
-        normalized_uri = resource_uri.replace('_', '.')
-        if normalized_uri in self._aggregated_resources:
-            logger.debug(f"Found resource '{resource_uri}' via normalization to '{normalized_uri}'")
-            return self._aggregated_resources[normalized_uri]
+        # Try converting scheme notation to underscore notation for backward compatibility  
+        # Legacy format: prefix://uri -> prefix_uri
+        if '://' in resource_uri:
+            normalized_uri = resource_uri.replace('://', '_', 1)
+            if normalized_uri in self._aggregated_resources:
+                logger.debug(f"Found resource '{resource_uri}' via scheme-to-underscore normalization to '{normalized_uri}'")
+                return self._aggregated_resources[normalized_uri]
 
         # Then try to match original URI
         for resource in self._aggregated_resources.values():
             if resource.original_uri == resource_uri:
                 return resource
 
-        # Try original URI with normalization
+        # Try matching the original URI directly
         for resource in self._aggregated_resources.values():
-            if resource.original_uri == normalized_uri:
-                logger.debug(f"Found resource '{resource_uri}' via original URI normalization to '{normalized_uri}'")
+            if resource.original_uri == resource_uri:
+                logger.debug(f"Found resource '{resource_uri}' via original URI match")
                 return resource
 
         logger.warning(f"Resource '{resource_uri}' not found. Available resources: {list(self._aggregated_resources.keys())}")
