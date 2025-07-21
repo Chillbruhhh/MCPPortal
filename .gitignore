@@ -18,6 +18,9 @@ claude_code_mcp/
 venv/ 
 venv_linux/
 
+docker-mcps.json
+
+
 # Python
 __pycache__/
 *.py[cod]
