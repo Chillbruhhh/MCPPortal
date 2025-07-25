@@ -12,6 +12,41 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+---
+
+## 🏁 Quick Setup (Recommended: Docker)
+
+### 🚀 Docker (Recommended)
+1. **Build the Docker image:**
+   ```bash
+   docker build -t mcp-portal -f docker/Dockerfile .
+   ```
+2. **Run the container:**
+   ```bash
+   docker run -d -p 8020:8020 --name mcp-portal mcp-portal
+  
+   OR
+
+   ### For Auto-Detect MCP Config
+   python run-docker.py
+   ```
+3. **Open the Web UI:**
+   - Visit [http://localhost:8020](http://localhost:8020) in your browser.
+
+### 🐍 Python (Alternative)
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Start the portal:**
+   ```bash
+   python -m mcp_gateway.main
+   ```
+3. **Open the Web UI:**
+   - Visit [http://localhost:8020](http://localhost:8020) in your browser.
+
+---
+
 ## ✨ Features
 
 - **🔍 Dynamic MCP Discovery**: Automatically finds and integrates MCP servers from Cursor, VS Code, Claude Desktop, and more
@@ -187,7 +222,7 @@ MCP_PORTAL_LOG_LEVEL=INFO
 ### Manual Configuration
 ```json
 {
-  "mcp_servers": {
+  "mcpServers": {
     "mcp-portal": {
       "type": "sse",
       "url": "http://localhost:8020/api/v1/mcp"
@@ -195,8 +230,21 @@ MCP_PORTAL_LOG_LEVEL=INFO
   }
 }
 ```
+
+> **Note for Windsurf users**: Use `serverUrl` instead of `url` in your configuration:
+ ```json
+ {
+   "mcpServers": {
+     "mcp-portal": {
+       "transport": "sse",
+       "serverUrl": "http://localhost:8020/api/v1/mcp"
+     }
+   }
+ }
+ ```
+
 ### Claude Code
-```json
+```python
 claude mcp add-json mcp-portal '{"type":"sse","url":"http://localhost:8020/api/v1/mcp"}' --scope user
 ```
 
@@ -273,12 +321,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🔗 Links
-
-- **Documentation**: [Full Documentation](docs/)
-- **Docker Hub**: [mcp-portal](https://hub.docker.com/r/chillbruhhh/mcp-portal)
-- **Issues**: [GitHub Issues](https://github.com/Chillbruhhh/MCPPortal/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Chillbruhhh/MCPPortal/discussions)
 
 ## 🎉 Acknowledgments
 

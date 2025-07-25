@@ -351,6 +351,19 @@ def create_app(gateway: MCPGateway, settings: Settings) -> FastAPI:
     # Setup middleware
     setup_middleware(app)
 
+    # Add nested SSE endpoints (for MCP Portal compatibility)
+    @app.get("/sse/sse")
+    async def nested_sse_endpoint(request: Request):
+        """Nested SSE endpoint for MCP Portal compatibility (/sse/sse)"""
+        logger.info("Nested SSE endpoint requested (/sse/sse)")
+        return await root_sse_endpoint(request)
+
+    @app.post("/sse/messages")
+    async def nested_sse_messages_endpoint(request: Request):
+        """Nested SSE messages endpoint for MCP Portal compatibility (/sse/messages)"""
+        logger.info("Nested SSE messages endpoint requested (/sse/messages)")
+        return await root_messages_endpoint(request)
+
     # Add root-level /sse endpoint (required for FastMCP compatibility)
     @app.get("/sse")
     async def root_sse_endpoint(request: Request):

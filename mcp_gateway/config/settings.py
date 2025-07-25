@@ -20,6 +20,8 @@ class MCPServerConfig(BaseModel):
     # URL-based servers (SSE/HTTP)
     url: Optional[str] = Field(None, description="Server connection URL")
     transport: Optional[str] = Field(None, description="Transport type (sse, http)")
+    sse_endpoint: Optional[str] = Field("/sse", description="SSE endpoint path (default: /sse)")
+    messages_endpoint: Optional[str] = Field("/messages", description="Messages endpoint path (default: /messages)")
     
     # Command-based servers (stdio)
     command: Optional[str] = Field(None, description="Command to start the server")

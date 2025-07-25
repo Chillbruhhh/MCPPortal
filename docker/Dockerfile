@@ -22,6 +22,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements first for better caching
 COPY requirements.txt /tmp/requirements.txt
+COPY assets/logo.jpg /app/assets/logo.jpg
 
 # Install Python dependencies
 RUN pip install --upgrade pip setuptools wheel && \

@@ -124,8 +124,8 @@ class MCPGateway:
                 logger.warning(f"Server {config.name} has no command or URL specified, skipping")
                 continue
                 
-            # Create URL from config - if it's a command, use process:// scheme
-            url = config.url if config.url else f"process://{config.command}"
+            # Create URL from config - if it's a command, use stdio:// scheme  
+            url = config.url if config.url else f"stdio://{config.command}"
             
             # Create server object in disconnected state
             server = MCPServer(
@@ -405,7 +405,7 @@ class MCPGateway:
 
         # Execute tool - check if it's a command-based or URL-based server
         try:
-            if server.url.startswith("process://"):
+            if server.url.startswith(("process://", "stdio://")):
                 # Use process manager for command-based servers
                 result = await self.process_manager.call_tool(
                     tool.server_name,
@@ -529,7 +529,7 @@ class MCPGateway:
 
         # Access resource - check if it's a command-based or URL-based server
         try:
-            if server.url.startswith("process://"):
+            if server.url.startswith(("process://", "stdio://")):
                 # Use process manager for command-based servers
                 result = await self.process_manager.read_resource(
                     resource.server_name,

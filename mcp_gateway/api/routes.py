@@ -1741,21 +1741,65 @@ async def enable_server(
                     server_name=server_name
                 )
         else:
-            # For URL-based servers, just mark as enabled
-            server = gateway.get_server_by_name(server_name)
-            if server:
-                server.enabled = True
-                
-            # Refresh MCP server tools
-            from ..mcp_server import refresh_mcp_tools
-            await refresh_mcp_tools()
+            # For URL-based servers, attempt to connect via SSE using unified transport
+            logger.info(f"Attempting to connect to SSE server: {server_name}")
             
-            return ServerActionResponse(
-                success=True,
-                action="enable",
-                message=f"Server '{server_name}' enabled successfully",
-                server_name=server_name
-            )
+            try:
+                result = await gateway.process_manager.start_server(server_config)
+                if result:
+                    # Update the gateway's internal state with the new server
+                    result.enabled = True  # Mark as enabled by user
+                    gateway._servers[server_name] = result
+                    
+                    # Update aggregation
+                    await gateway.aggregator.update_aggregation(list(gateway._servers.values()))
+                    
+                    # Refresh MCP server tools
+                    from ..mcp_server import refresh_mcp_tools
+                    await refresh_mcp_tools()
+                    
+                    logger.info(f"SSE server {server_name} connected successfully with {len(result.tools)} tools")
+                    
+                    return ServerActionResponse(
+                        success=True,
+                        action="enable",
+                        message=f"SSE server '{server_name}' connected successfully with {len(result.tools)} tools",
+                        server_name=server_name
+                    )
+                else:
+                    # If connection failed, just mark as enabled (fallback behavior)
+                    server = gateway.get_server_by_name(server_name)
+                    if server:
+                        server.enabled = True
+                    
+                    # Refresh MCP server tools
+                    from ..mcp_server import refresh_mcp_tools
+                    await refresh_mcp_tools()
+                    
+                    return ServerActionResponse(
+                        success=False,
+                        action="enable",
+                        message=f"Server '{server_name}' enabled but SSE connection failed",
+                        server_name=server_name
+                    )
+            except Exception as e:
+                logger.error(f"Error connecting to SSE server {server_name}: {e}")
+                
+                # Fallback to just marking as enabled
+                server = gateway.get_server_by_name(server_name)
+                if server:
+                    server.enabled = True
+                
+                # Refresh MCP server tools
+                from ..mcp_server import refresh_mcp_tools
+                await refresh_mcp_tools()
+                
+                return ServerActionResponse(
+                    success=False,
+                    action="enable",
+                    message=f"Server '{server_name}' enabled but connection failed: {str(e)}",
+                    server_name=server_name
+                )
             
     except Exception as e:
         raise HTTPException(

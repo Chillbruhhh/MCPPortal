@@ -138,8 +138,8 @@ class MCPServer(BaseModel):
     @classmethod
     def validate_url(cls, v):
         """Validate server URL format."""
-        if not v.startswith(("http://", "https://", "ws://", "wss://", "process://")):
-            raise ValueError("Server URL must start with http://, https://, ws://, wss://, or process://")
+        if not v.startswith(("http://", "https://", "ws://", "wss://", "process://", "stdio://")):
+            raise ValueError("Server URL must start with http://, https://, ws://, wss://, process://, or stdio://")
         return v
 
 

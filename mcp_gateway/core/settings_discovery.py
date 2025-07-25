@@ -477,51 +477,78 @@ class IDESettingsDiscovery:
 
     def _convert_continue_server_config(self, name: str, config: Dict) -> MCPServerConfig:
         """Convert Continue.dev server config to our format."""
+        # Check if this is a command-based server
         if "command" in config:
-            url = self._command_to_url(config["command"], config.get("args", []))
+            return MCPServerConfig(
+                name=name,
+                command=config["command"],
+                args=config.get("args", []),
+                env=config.get("env", {}),
+                enabled=config.get("enabled", True),
+                timeout=config.get("timeout", 30),
+                max_retries=config.get("max_retries", 3),
+                source="Continue.dev"
+            )
         else:
             url = config.get("url", f"http://localhost:3000/{name}")
-
-        return MCPServerConfig(
-            name=name,
-            url=url,
-            enabled=config.get("enabled", True),
-            timeout=config.get("timeout", 30),
-            max_retries=config.get("max_retries", 3),
-            source="Continue.dev"
-        )
+            return MCPServerConfig(
+                name=name,
+                url=url,
+                enabled=config.get("enabled", True),
+                timeout=config.get("timeout", 30),
+                max_retries=config.get("max_retries", 3),
+                source="Continue.dev"
+            )
 
     def _convert_aider_server_config(self, name: str, config: Dict) -> MCPServerConfig:
         """Convert Aider server config to our format."""
+        # Check if this is a command-based server
         if "command" in config:
-            url = self._command_to_url(config["command"], config.get("args", []))
+            return MCPServerConfig(
+                name=name,
+                command=config["command"],
+                args=config.get("args", []),
+                env=config.get("env", {}),
+                enabled=config.get("enabled", True),
+                timeout=config.get("timeout", 30),
+                max_retries=config.get("max_retries", 3),
+                source="Aider"
+            )
         else:
             url = config.get("url", f"http://localhost:3000/{name}")
-
-        return MCPServerConfig(
-            name=name,
-            url=url,
-            enabled=config.get("enabled", True),
-            timeout=config.get("timeout", 30),
-            max_retries=config.get("max_retries", 3),
-            source="Aider"
-        )
+            return MCPServerConfig(
+                name=name,
+                url=url,
+                enabled=config.get("enabled", True),
+                timeout=config.get("timeout", 30),
+                max_retries=config.get("max_retries", 3),
+                source="Aider"
+            )
 
     def _convert_codeium_server_config(self, name: str, config: Dict) -> MCPServerConfig:
         """Convert Codeium server config to our format."""
+        # Check if this is a command-based server
         if "command" in config:
-            url = self._command_to_url(config["command"], config.get("args", []))
+            return MCPServerConfig(
+                name=name,
+                command=config["command"],
+                args=config.get("args", []),
+                env=config.get("env", {}),
+                enabled=config.get("enabled", True),
+                timeout=config.get("timeout", 30),
+                max_retries=config.get("max_retries", 3),
+                source="Codeium"
+            )
         else:
             url = config.get("url", f"http://localhost:3000/{name}")
-
-        return MCPServerConfig(
-            name=name,
-            url=url,
-            enabled=config.get("enabled", True),
-            timeout=config.get("timeout", 30),
-            max_retries=config.get("max_retries", 3),
-            source="Codeium"
-        )
+            return MCPServerConfig(
+                name=name,
+                url=url,
+                enabled=config.get("enabled", True),
+                timeout=config.get("timeout", 30),
+                max_retries=config.get("max_retries", 3),
+                source="Codeium"
+            )
 
     def _command_to_url(self, command: str, args: List[str]) -> str:
         """

@@ -198,14 +198,14 @@ class MCPSSETransport:
         logger.info("Sending MCP endpoint event to client")
         
         # Send required endpoint event (per MCP specification)
-        # Point to /sse since some clients expect to POST directly to the SSE endpoint
+        # Point to /sse/messages for MCP Portal compatibility
         endpoint_event = {
             "type": "endpoint",
-            "endpoint": "/sse"  # Tell client to send requests to /sse (same endpoint)
+            "endpoint": "/sse/messages"  # Tell client to send requests to /sse/messages
         }
         
         await outgoing_queue.put(endpoint_event)
-        logger.info("MCP endpoint event sent - client can now send initialize request to /sse")
+        logger.info("MCP endpoint event sent - client can now send initialize request to /sse/messages")
 
     async def _send_to_all_connections(self, message: Dict[str, Any]):
         """Send message to all active SSE connections."""
