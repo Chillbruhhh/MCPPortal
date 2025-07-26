@@ -78,7 +78,7 @@ def create_docker_command():
             print(f"✗ No {ide_name} config found at: {local_path}")
     
     # Add the image name
-    cmd.append("mcp-gateway")
+    cmd.append("mcp-portal")
     
     return cmd
 
