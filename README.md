@@ -16,6 +16,16 @@
 
 ## 🏁 Quick Setup (Recommended: Docker)
 
+  Navigate to the folder where you want to store this (repo, mcps, etc.) 
+
+  Open terminal and input the following:
+
+   ```bash
+   git clone https://github.com/Chillbruhhh/MCPportal.git
+
+   cd MCPportal
+   ```
+
 ### 🚀 Docker (Recommended)
 1. **Build the Docker image:**
    ```bash
