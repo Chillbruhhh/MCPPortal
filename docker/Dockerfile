@@ -22,7 +22,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements first for better caching
 COPY requirements.txt /tmp/requirements.txt
-COPY assets/logo.jpg /app/assets/logo.jpg
 
 # Install Python dependencies
 RUN pip install --upgrade pip setuptools wheel && \
@@ -68,6 +67,7 @@ RUN mkdir -p /app/logs && \
 # Copy application code
 COPY mcp_gateway/ /app/mcp_gateway/
 COPY pyproject.toml /app/
+COPY assets/ /app/assets/
 
 # Fix permissions
 RUN chown -R mcpgateway:mcpgateway /app

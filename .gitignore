@@ -9,6 +9,7 @@ PRPs/
 .claude/
 .gitattributes
 MCP_GATEWAY_FIXES.md
+tests/
 
 # Original repository files to ignore
 examples/
@@ -310,3 +311,5 @@ test_mcp_gateway.py
 standalone_mcp_server.py
 docker-mcps.json
 
+tests/
+/tests/

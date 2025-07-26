@@ -6,9 +6,9 @@
 set -e
 
 # Configuration
-IMAGE_NAME="mcp-gateway"
+IMAGE_NAME="mcp-portal"
 IMAGE_TAG="latest"
-CONTAINER_NAME="mcp-gateway"
+CONTAINER_NAME="mcp-portal"
 DOCKERFILE_PATH="docker/Dockerfile"
 COMPOSE_FILE="docker/docker-compose.yml"
 PROD_COMPOSE_FILE="docker/docker-compose.prod.yml"

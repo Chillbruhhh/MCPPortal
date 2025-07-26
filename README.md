@@ -24,10 +24,10 @@
 2. **Run the container:**
    ```bash
    docker run -d -p 8020:8020 --name mcp-portal mcp-portal
-  
-   OR
-
-   ### For Auto-Detect MCP Config
+   ```
+   
+   **OR use auto-detection:**
+   ```bash
    python run-docker.py
    ```
 3. **Open the Web UI:**
